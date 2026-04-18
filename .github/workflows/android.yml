@@ -1,9 +1,7 @@
 name: Android Build
 
 on:
-  workflow_dispatch: # 允许手动点 Run workflow
-  push:
-    branches: [ master ]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -20,13 +18,16 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Build APK
+      - name: Grant execute permission for gradlew
+        run: chmod +x apps/multiplatform/gradlew
+
+      - name: Build with Gradle
         run: |
-          chmod +x ./gradlew
+          cd apps/multiplatform
           ./gradlew assembleRelease
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Simplex-APK
-          path: apps/android/build/outputs/apk/release/*.apk
+          name: Simplex-Chat-Mod-APK
+          path: apps/multiplatform/android/build/outputs/apk/release/*.apk
