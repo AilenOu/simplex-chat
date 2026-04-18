@@ -1,4 +1,4 @@
-name: Build Simplex Chat Android APK
+name: Build Android APK
 on:
   workflow_dispatch:
 
@@ -10,16 +10,18 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install system dependencies
+      - name: Set up Haskell Stack
+        uses: haskell-actions/setup@v2
+        with:
+          enable-stack: true
+          stack-version: 'latest'
+
+      - name: Install dependencies
         run: |
           sudo apt update
-          sudo apt install -y build-essential libgmp-dev zlib1g-dev git curl
+          sudo apt install -y build-essential libgmp-dev zlib1g-dev
 
-      - name: Install Haskell
-        run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://get.haskellstack.org/ | sh
-
-      - name: Build native libraries for Android
+      - name: Build android libs
         run: |
           cd apps/multiplatform
           make android
