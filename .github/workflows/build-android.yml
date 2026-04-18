@@ -1,0 +1,225 @@
+name: 构建Android APK
+
+on:
+  push:
+    branches:
+      - master
+      - stable
+    tags:
+      - "v*"
+      - "!*-fdroid"
+      - "!*-armv7a"
+    paths:
+      - 'apps/multiplatform/**'
+      - '.github/workflows/build-android.yml'
+  pull_request:
+    branches:
+      - master
+      - stable
+    paths:
+      - 'apps/multiplatform/**'
+  workflow_dispatch:
+
+env:
+  JAVA_VERSION: 17
+  GRADLE_VERSION: 8.7
+  NDK_VERSION: 26.1.10909125
+
+jobs:
+  build-apk:
+    name: 构建Android APK - ${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64-v8a
+            build_name: simplex-chat-release-arm64-v8a
+          - arch: armeabi-v7a
+            build_name: simplex-chat-release-armeabi-v7a
+          - arch: x86_64
+            build_name: simplex-chat-release-x86_64
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置Java环境
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: 设置Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          api-level: 35
+          ndk-version: ${{ env.NDK_VERSION }}
+
+      - name: 验证gradle权限
+        run: chmod +x apps/multiplatform/gradlew
+
+      - name: 配置本地构建属性
+        working-directory: apps/multiplatform
+        run: |
+          cat > local.properties << EOF
+          abi_filter=${{ matrix.arch }}
+          compression.level=9
+          EOF
+
+      - name: 构建Debug APK
+        working-directory: apps/multiplatform
+        run: |
+          ./gradlew clean assembleDebug \
+            -Dorg.gradle.workers.max=4 \
+            -Dorg.gradle.parallel=true \
+            -Dorg.gradle.jvmargs="-Xmx4g"
+
+      - name: 构建Release APK
+        working-directory: apps/multiplatform
+        run: |
+          ./gradlew assembleRelease \
+            -Dorg.gradle.workers.max=4 \
+            -Dorg.gradle.parallel=true \
+            -Dorg.gradle.jvmargs="-Xmx4g"
+
+      - name: 查找生成的APK文件
+        id: find_apk
+        working-directory: apps/multiplatform
+        run: |
+          debug_apk=$(find . -name "*debug.apk" -type f | head -1)
+          release_apk=$(find . -name "*release-unsigned.apk" -type f | head -1)
+          
+          if [ -z "$debug_apk" ] || [ -z "$release_apk" ]; then
+            echo "❌ 找不到APK文件"
+            find . -name "*.apk" -type f
+            exit 1
+          fi
+          
+          echo "debug_apk=$debug_apk" >> $GITHUB_OUTPUT
+          echo "release_apk=$release_apk" >> $GITHUB_OUTPUT
+          echo "✅ Debug APK: $debug_apk"
+          echo "✅ Release APK: $release_apk"
+
+      - name: 计算APK校验和
+        id: checksum
+        working-directory: apps/multiplatform
+        run: |
+          debug_hash=$(sha256sum "${{ steps.find_apk.outputs.debug_apk }}" | cut -d' ' -f1)
+          release_hash=$(sha256sum "${{ steps.find_apk.outputs.release_apk }}" | cut -d' ' -f1)
+          
+          echo "debug_hash=$debug_hash" >> $GITHUB_OUTPUT
+          echo "release_hash=$release_hash" >> $GITHUB_OUTPUT
+          
+          echo "Debug SHA256: $debug_hash"
+          echo "Release SHA256: $release_hash"
+
+      - name: 上传Debug APK到构件库
+        uses: actions/upload-artifact@v4
+        with:
+          name: simplex-chat-debug-${{ matrix.arch }}
+          path: apps/multiplatform/${{ steps.find_apk.outputs.debug_apk }}
+          retention-days: 30
+
+      - name: 上传Release APK到构件库
+        uses: actions/upload-artifact@v4
+        with:
+          name: simplex-chat-release-${{ matrix.arch }}
+          path: apps/multiplatform/${{ steps.find_apk.outputs.release_apk }}
+          retention-days: 30
+
+      - name: 生成构建报告
+        run: |
+          cat > build-report.md << 'EOF'
+          # Android APK 构建报告
+          
+          ## 构建信息
+          - **架构**: ${{ matrix.arch }}
+          - **构建时间**: $(date '+%Y-%m-%d %H:%M:%S')
+          - **Git提交**: ${{ github.sha }}
+          - **分支**: ${{ github.ref }}
+          
+          ## 文件信息
+          ### Debug APK
+          - **路径**: ${{ steps.find_apk.outputs.debug_apk }}
+          - **SHA256**: ${{ steps.checksum.outputs.debug_hash }}
+          
+          ### Release APK
+          - **路径**: ${{ steps.find_apk.outputs.release_apk }}
+          - **SHA256**: ${{ steps.checksum.outputs.release_hash }}
+          
+          ## 下载
+          可在 GitHub Actions 的 "Artifacts" 部分下载APK文件。
+          EOF
+
+      - name: 上传构建报告
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-report-${{ matrix.arch }}
+          path: build-report.md
+
+  create-release:
+    name: 创建Release版本
+    needs: build-apk
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 下载所有APK构件
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: 准备Release文件
+        id: prepare_release
+        run: |
+          cd artifacts
+          
+          # 创建Release包目录
+          mkdir -p release
+          
+          # 复制APK文件到Release目录
+          find . -name "*.apk" -type f -exec cp {} release/ \;
+          
+          # 生成文件列表和校验和
+          cd release
+          ls -lah *.apk
+          sha256sum *.apk > SHA256SUMS.txt
+          
+          echo "✅ Release文件准备完成"
+          echo "files_path=artifacts/release" >> $GITHUB_OUTPUT
+
+      - name: 上传Release版本到GitHub
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          files: |
+            ${{ steps.prepare_release.outputs.files_path }}/*.apk
+            ${{ steps.prepare_release.outputs.files_path }}/SHA256SUMS.txt
+          fail_on_unmatched_files: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  notify:
+    name: 发送构建通知
+    needs: [build-apk]
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: 构建状态检查
+        run: |
+          if [ "${{ needs.build-apk.result }}" == "success" ]; then
+            echo "✅ Android APK构建成功"
+            exit 0
+          else
+            echo "❌ Android APK构建失败"
+            exit 1
+          fi
+
