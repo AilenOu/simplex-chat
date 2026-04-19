@@ -78,7 +78,6 @@ fun CIFileView(
               //generalGetString(MR.strings.large_file),
               //String.format(generalGetString(MR.strings.contact_sent_large_file), formatBytes(getMaxFileSize(file.fileProtocol)))
            // )
-          }
         }
         file.fileStatus is CIFileStatus.RcvAccepted ->
           when (file.fileProtocol) {
