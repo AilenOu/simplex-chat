@@ -6,7 +6,7 @@ SimpleX Chat is a **privacy-first messaging platform written in Haskell** using 
 
 **Key Components:**
 - **Core Library** (`src/Simplex/Chat/`) - Protocol, message handling, database abstractions
-- **Executables** - CLI (`simplex-chat`), bots (`simplex-bot`, `simplex-bot-advanced`), directory service
+- **Executables** - CLI (`simplex-chat`), bots (`simplex-bot`, `simplex-bot-advanced`, `simplex-broadcast-bot`), directory service
 - **Apps** - iOS, Android, multiplatform desktop clients
 - **Tests** - Comprehensive test suite with database-specific variants
 
@@ -36,11 +36,11 @@ fourmolu --mode inplace $(find src apps -name '*.hs')
 The project supports **conditional compilation** via Cabal flags (`simplex-chat.cabal` lines 22-35):
 
 ```bash
-# SQLite build (default) - used for mobile/desktop
-cabal build -f-client_library
+# SQLite build (default)
+cabal build
 
 # PostgreSQL build - for server deployments
-cabal build -f+client_postgres -f-client_library
+cabal build -f+client_postgres
 
 # Client library only (no CLI/bot code)
 cabal build -f+client_library
@@ -58,7 +58,7 @@ cabal build -f+swift
 Project uses **multiple custom Git repository packages** (cabal.project lines 12-65):
 - `simplexmq` (tag 9346b85c3f34f8b12fefef4631ba21087cf5f0e3) - Core messaging queue protocol
 - `direct-sqlcipher`, `sqlcipher-simple` - SQLite encryption bindings
-- Custom `aeson`, `terminal`, `wai` forks with project-specific patches
+- Custom forks include `aeson`, `haskell-terminal`, `hs-socks`, `android-support`, `zip`, and `wai` (`warp` and `warp-tls`) with project-specific patches
 
 **GHC Constraints:** Conditional code for GHC 9.6.2+ vs earlier (bytestring 0.11 vs 0.10, text version, template-haskell).
 
@@ -85,6 +85,8 @@ src/Simplex/Chat/
 │   └── Output.hs             # Response formatting
 ├── Bot.hs                    # Bot framework
 ├── Remote/                   # Remote control & app updates
+├── Library/                  # Public command/subscriber API used by app bindings
+├── Operators/                # Operator presets and conditions used in policy checks
 └── Mobile/                   # Mobile-specific features
 ```
 
@@ -128,7 +130,8 @@ Enables generic code for `User` and `Contact` without duplication. Always prefer
 - **Isolated temporary databases**: Test bracket (Test.hs:77) creates per-test SQLite instances
 - **Fixture management**: `tests/fixtures/` directory + `JSONFixtures.hs` for reproducible test data
 - **Built-in query statistics**: TMap-based query tracking for performance analysis (Test.hs:43-44)
-- **Schema validation**: Automatic comparison with `chat_schema.sql` for migration correctness
+- **Schema validation**: Backend-specific schema dump tests (`SchemaDump` for SQLite, `PostgresSchemaDump` for Postgres)
+- **Bot API docs validation**: SQLite test runs include `describe "Bot API docs" apiDocsTest`
 
 ## Project-Specific Conventions
 
@@ -181,9 +184,9 @@ Enables generic code for `User` and `Contact` without duplication. Always prefer
 
 1. CLI starts with `simplex-chat -p 5225` (WebSocket server on localhost:5225)
 2. External bot connects via WebSocket
-3. Bot sends command JSON: `{"command":"apiNewChat","profile":{"displayName":"bot"}}`
+3. Bot sends command JSON: `{"corrId":"42","cmd":"<command string>"}`
 4. CLI parses via command parser, executes side effects
-5. CLI returns event JSON to WebSocket connection
+5. CLI returns `{"corrId":"42","resp":{...}}` for responses and `{"resp":{...}}` for events
 6. Security: bot runs in same process namespace (no network exposure needed)
 
 ## Compilation & Debugging Tips
@@ -265,14 +268,14 @@ cabal run simplex-chat -- -p 5225
 
 # Terminal 2: Send command via WebSocket (install wscat: npm install -g wscat)
 wscat -c ws://localhost:5225
-> {"command": "apiNewChat", "profile": {"displayName": "TestBot"}}
+> {"corrId": "1", "cmd": "<command string>"}
 # Returns event JSON response
 
 # Or use Python
 python3 -c "
 import json, websocket
 ws = websocket.create_connection('ws://localhost:5225')
-ws.send(json.dumps({'command': 'apiNewChat', 'profile': {'displayName': 'TestBot'}}))
+ws.send(json.dumps({'corrId': '1', 'cmd': '<command string>'}))
 print(ws.recv())
 "
 ```
