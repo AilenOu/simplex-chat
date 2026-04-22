@@ -68,22 +68,27 @@ Project uses **multiple custom Git repository packages** (cabal.project lines 12
 
 ```
 src/Simplex/Chat/
-├── Controller.hs             # Main state machine & command routing (1716 lines)
-├── Types.hs                  # Core type definitions (2148 lines)
+├── Controller.hs             # Main state machine & command routing
+├── Types.hs                  # Core type definitions
+├── Types/                    # Type submodules (preferences, UI theme, shared helpers)
 ├── Store.hs                  # Database abstraction facade
 │   ├── Store/Messages.hs     # Message storage operations
 │   ├── Store/Groups.hs       # Group chat operations
 │   ├── Store/Profiles.hs     # User/contact profiles
 │   ├── Store/Connections.hs  # Connection management
+│   ├── Store/NoteFolders.hs  # Private notes / folders storage
 │   ├── SQLite/Migrations/    # 80+ numbered schema migrations
 │   └── Postgres/Migrations/  # Parallel Postgres migrations
 ├── Messages.hs               # Protocol & encryption encoding
 ├── Protocol.hs               # SimpleX protocol types
 ├── Terminal/                 # CLI interface
 │   ├── Terminal.hs           # Main terminal loop
+│   ├── Main.hs               # CLI bootstrap / runtime wiring
 │   ├── Input.hs              # Command parsing
+│   ├── Notification.hs       # Local notifications and alert logic
 │   └── Output.hs             # Response formatting
 ├── Bot.hs                    # Bot framework
+├── Bot/                      # Bot helpers (e.g., known contacts)
 ├── Remote/                   # Remote control & app updates
 ├── Library/                  # Public command/subscriber API used by app bindings
 ├── Operators/                # Operator presets and conditions used in policy checks
@@ -122,7 +127,7 @@ Enables generic code for `User` and `Contact` without duplication. Always prefer
 
 - `-p <port>` flag (apps/simplex-chat/Main.hs) runs local WebSocket server
 - Bot API documented in `bots/README.md` - commands/events exchanged as JSON
-- JSON schema auto-generated from Haskell types via `bots/api/COMMANDS.md` generation
+- API docs and TypeScript unions are generated/validated from Haskell types via `tests/APIDocs.hs` (`bots/api/COMMANDS.md`, `bots/api/EVENTS.md`, `bots/api/TYPES.md`, `packages/simplex-chat-client/types/typescript/src/*.ts`)
 
 ### Testing Patterns
 
@@ -131,7 +136,7 @@ Enables generic code for `User` and `Contact` without duplication. Always prefer
 - **Fixture management**: `tests/fixtures/` directory + `JSONFixtures.hs` for reproducible test data
 - **Built-in query statistics**: TMap-based query tracking for performance analysis (Test.hs:43-44)
 - **Schema validation**: Backend-specific schema dump tests (`SchemaDump` for SQLite, `PostgresSchemaDump` for Postgres)
-- **Bot API docs validation**: SQLite test runs include `describe "Bot API docs" apiDocsTest`
+- **Bot API docs + TS types validation**: SQLite test runs include `describe "Bot API docs" apiDocsTest`, which rewrites and verifies `bots/api/*.md` and `packages/simplex-chat-client/types/typescript/src/*.ts`
 
 ## Project-Specific Conventions
 
@@ -212,7 +217,7 @@ cabal update  # Fetch latest source-repository-package commits
 
 ### Warnings Are Errors
 
-Project enables `-Werror` flag universally. Common fixable warnings:
+Project enforces selected warnings as errors via `-Werror=<warning>` flags in all Cabal stanzas. Common fixable warnings:
 
 - **Incomplete record updates**: Use `record { field = value }` or `record { .. }` syntax
 - **Unused imports**: Check `#if`/`#else` guards - imports may be conditional
@@ -286,7 +291,7 @@ print(ws.recv())
 - **Local Protocol**: `src/Simplex/Chat/protocol.md` - internal encoding details
 - **SimpleX Messaging**: External `simplex-chat/simplexmq` repo - SMP server protocol
 - **Bot API**: `bots/README.md` - bot configuration and creation guide
-- **API Docs**: `bots/api/COMMANDS.md` (auto-generated from Controller types)
+- **API Docs**: `bots/api/README.md` with generated references in `bots/api/COMMANDS.md`, `bots/api/EVENTS.md`, `bots/api/TYPES.md`
 - **CLI Help**: `src/Simplex/Chat/Help.hs` - user command documentation
 - **Security Model**: `PRIVACY.md`, `docs/SIMPLEX.md` - architecture rationale
 - **Version History**: `docs/version-changes` - protocol evolution
@@ -298,5 +303,5 @@ print(ws.recv())
 - **New client feature** (message type, profile field): Extend `Controller.hs` + `Types.hs` + migrations
 - **Algorithm update** (encryption, ratchet): Coordinate with `simplexmq` and security review
 - **CLI command** (user-facing): Add to `Terminal/Input.hs` parser and `Controller.hs` handler
-- **Bot API command**: Same as CLI - auto-generates to `bots/api/COMMANDS.md`
+- **Bot API command**: Same as CLI - updates generated API docs in `bots/api/COMMANDS.md`, `bots/api/EVENTS.md`, `bots/api/TYPES.md`
 

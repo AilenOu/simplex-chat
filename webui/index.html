@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SimpleX Chat WebUI</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Setup screen (shown when no user profile exists) -->
+  <div id="setup-screen" class="screen hidden">
+    <div class="setup-card">
+      <div class="logo">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+          <rect width="64" height="64" rx="16" fill="#0D1B2A"/>
+          <path d="M16 24C16 19.6 19.6 16 24 16H40C44.4 16 48 19.6 48 24V32C48 36.4 44.4 40 40 40H32L24 48V40H24C19.6 40 16 36.4 16 32V24Z" fill="#70B8FF"/>
+        </svg>
+      </div>
+      <h1>SimpleX Chat</h1>
+      <p class="setup-subtitle">Create your profile to get started</p>
+      <div class="form-group">
+        <label for="display-name">Display Name</label>
+        <input type="text" id="display-name" placeholder="Enter your display name" maxlength="60" />
+      </div>
+      <div class="form-group">
+        <label for="full-name">Full Name <span class="optional">(optional)</span></label>
+        <input type="text" id="full-name" placeholder="Enter your full name" maxlength="120" />
+      </div>
+      <button id="create-profile-btn" class="btn-primary">Create Profile</button>
+      <div id="setup-error" class="error-msg hidden"></div>
+    </div>
+  </div>
+
+  <!-- Main app (shown when user profile exists) -->
+  <div id="app" class="hidden">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="user-info" id="user-info">
+          <div class="avatar" id="user-avatar">?</div>
+          <div class="user-details">
+            <span class="user-name" id="user-name">Loading...</span>
+            <span class="user-status">Online</span>
+          </div>
+        </div>
+        <div class="sidebar-actions">
+          <button class="icon-btn" id="show-address-btn" title="My Address">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+            </svg>
+          </button>
+          <button class="icon-btn" id="connect-btn" title="Connect via Link">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="search-box">
+        <input type="text" id="contact-search" placeholder="Search contacts..." />
+      </div>
+      <nav class="contact-list" id="contact-list">
+        <div class="loading-state">Loading contacts...</div>
+      </nav>
+    </aside>
+
+    <!-- Main content -->
+    <main class="main-content">
+      <!-- Empty state -->
+      <div class="empty-state" id="empty-state">
+        <div class="empty-icon">
+          <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+        </div>
+        <h2>Select a chat</h2>
+        <p>Choose a contact from the sidebar to start chatting, or create a new connection.</p>
+      </div>
+
+      <!-- Chat view -->
+      <div class="chat-view hidden" id="chat-view">
+        <div class="chat-header" id="chat-header">
+          <div class="chat-avatar" id="chat-avatar"></div>
+          <div class="chat-info">
+            <span class="chat-name" id="chat-name"></span>
+            <span class="chat-status" id="chat-status"></span>
+          </div>
+        </div>
+        <div class="messages-container" id="messages-container">
+          <div class="messages-list" id="messages-list"></div>
+        </div>
+        <div class="message-input-area">
+          <textarea id="message-input" placeholder="Type a message..." rows="1"></textarea>
+          <button id="send-btn" class="btn-send">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Address Modal -->
+  <div class="modal-overlay hidden" id="address-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>My SimpleX Address</h2>
+        <button class="close-btn" id="close-address-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-subtitle">Share this address so others can connect with you</p>
+        <div id="qrcode-container" class="qrcode-container">
+          <canvas id="qrcode-canvas"></canvas>
+        </div>
+        <div class="address-text-container">
+          <input type="text" id="address-text" readonly />
+          <button class="btn-copy" id="copy-address-btn">Copy</button>
+        </div>
+        <div id="no-address-msg" class="hidden">
+          <p>You don't have a SimpleX address yet.</p>
+          <button class="btn-primary" id="create-address-btn">Create Address</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Connect Modal -->
+  <div class="modal-overlay hidden" id="connect-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Connect via Link</h2>
+        <button class="close-btn" id="close-connect-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-subtitle">Paste a SimpleX contact link or invitation to connect</p>
+        <div class="form-group">
+          <label for="connect-link">SimpleX Link</label>
+          <textarea id="connect-link" placeholder="https://simplex.chat/contact#..." rows="3"></textarea>
+        </div>
+        <button class="btn-primary" id="connect-submit-btn">Connect</button>
+        <div id="connect-error" class="error-msg hidden"></div>
+        <div id="connect-success" class="success-msg hidden"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Connection status bar -->
+  <div class="connection-status" id="connection-status">
+    <span id="status-text">Connecting...</span>
+  </div>
+
+  <!-- Contact request notification -->
+  <div class="notification-bar hidden" id="contact-request-bar">
+    <span id="contact-request-text"></span>
+    <div class="notif-actions">
+      <button class="btn-accept" id="accept-request-btn">Accept</button>
+      <button class="btn-reject" id="reject-request-btn">Reject</button>
+    </div>
+  </div>
+
+  <script src="qrcode.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
+

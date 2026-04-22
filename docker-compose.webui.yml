@@ -1,0 +1,18 @@
+services:
+  simplex-webui:
+    build:
+      context: .
+      dockerfile: docker/webui/Dockerfile
+    container_name: simplex-webui
+    ports:
+      - "8080:8080"
+    environment:
+      SIMPLEX_WS_PORT: "5225"
+      SIMPLEX_DB_PATH: "/var/lib/simplex/chat"
+    volumes:
+      - simplex-webui-data:/var/lib/simplex
+    restart: unless-stopped
+
+volumes:
+  simplex-webui-data:
+

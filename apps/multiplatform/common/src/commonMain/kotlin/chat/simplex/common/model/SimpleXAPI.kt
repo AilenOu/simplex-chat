@@ -62,6 +62,8 @@ val CREATE_MEMBER_CONTACT_VERSION = 2
 // support group knocking (MsgScope)
 val GROUP_KNOCKING_VERSION = 15
 
+private val autoSavedMediaKeys = mutableSetOf<String>()
+
 enum class CallOnLockScreen {
   DISABLE,
   SHOW,
@@ -103,6 +105,7 @@ class AppPreferences {
   val webrtcIceServers = mkStrPreference(SHARED_PREFS_WEBRTC_ICE_SERVERS, null)
   val privacyProtectScreen = mkBoolPreference(SHARED_PREFS_PRIVACY_PROTECT_SCREEN, true)
   val privacyAcceptImages = mkBoolPreference(SHARED_PREFS_PRIVACY_ACCEPT_IMAGES, true)
+  val privacyAutoSaveReceivedMedia = mkBoolPreference(SHARED_PREFS_PRIVACY_AUTO_SAVE_RECEIVED_MEDIA, true)
   val privacyLinkPreviews = mkBoolPreference(SHARED_PREFS_PRIVACY_LINK_PREVIEWS, true)
   val privacyLinkPreviewsShowAlert = mkBoolPreference(SHARED_PREFS_PRIVACY_LINK_PREVIEWS_SHOW_ALERT, true)
   val privacySanitizeLinks = mkBoolPreference(SHARED_PREFS_PRIVACY_SANITIZE_LINKS, false)
@@ -370,6 +373,7 @@ class AppPreferences {
     private const val SHARED_PREFS_WEBRTC_ICE_SERVERS = "WebrtcICEServers"
     private const val SHARED_PREFS_PRIVACY_PROTECT_SCREEN = "PrivacyProtectScreen"
     private const val SHARED_PREFS_PRIVACY_ACCEPT_IMAGES = "PrivacyAcceptImages"
+    private const val SHARED_PREFS_PRIVACY_AUTO_SAVE_RECEIVED_MEDIA = "PrivacyAutoSaveReceivedMedia"
     private const val SHARED_PREFS_PRIVACY_TRANSFER_IMAGES_INLINE = "PrivacyTransferImagesInline"
     private const val SHARED_PREFS_PRIVACY_LINK_PREVIEWS = "PrivacyLinkPreviews"
     private const val SHARED_PREFS_PRIVACY_LINK_PREVIEWS_SHOW_ALERT = "PrivacyLinkPreviewsShowAlert"
@@ -2707,6 +2711,7 @@ object ChatController {
           ) {
             receiveFile(rhId, r.user, file.fileId, auto = true)
           }
+          autoSaveReceivedMediaIfNeeded(rhId, r.user, cItem)
           ntfManager.notifyMessageReceived(rhId, r.user, cInfo, cItem)
         }
       }
@@ -2721,6 +2726,7 @@ object ChatController {
             withContext(Dispatchers.Main) {
               chatModel.secondaryChatsContext.value?.upsertChatItem(rhId, cInfo, cItem)
             }
+            autoSaveReceivedMediaIfNeeded(rhId, r.user, cItem)
           }
         }
       is CR.ChatItemUpdated ->
@@ -3374,6 +3380,7 @@ object ChatController {
     val cInfo = aChatItem.chatInfo
     val cItem = aChatItem.chatItem
     val notify = { ntfManager.notifyMessageReceived(rh, user, cInfo, cItem) }
+    autoSaveReceivedMediaIfNeeded(rh, user, cItem)
     if (!activeUser(rh, user)) {
       notify()
     } else {
@@ -3389,6 +3396,21 @@ object ChatController {
         notify()
       }
     }
+  }
+
+  private fun autoSaveReceivedMediaIfNeeded(rh: Long?, user: UserLike, cItem: ChatItem) {
+    if (!appPrefs.privacyAutoSaveReceivedMedia.get()) return
+
+    val file = cItem.file ?: return
+    if (file.fileStatus !is CIFileStatus.RcvComplete) return
+
+    val msgContent = cItem.content.msgContent
+    if (msgContent !is MsgContent.MCImage && msgContent !is MsgContent.MCVideo) return
+
+    val key = "${rh ?: 0}:${user.userId}:${file.fileId}"
+    if (!autoSavedMediaKeys.add(key)) return
+
+    autoSaveReceivedMedia(file, msgContent)
   }
 
   private fun updateContactsStatus(contactRefs: List<ContactRef>, status: NetworkStatus) {
@@ -7767,6 +7789,7 @@ data class AppSettings(
   var privacyEncryptLocalFiles: Boolean? = null,
   var privacyAskToApproveRelays: Boolean? = null,
   var privacyAcceptImages: Boolean? = null,
+  var privacyAutoSaveReceivedMedia: Boolean? = null,
   var privacyLinkPreviews: Boolean? = null,
   var privacyChatListOpenLinks: PrivacyChatListOpenLinksMode? = null,
   var privacyShowChatPreviews: Boolean? = null,
@@ -7803,6 +7826,7 @@ data class AppSettings(
     if (privacyEncryptLocalFiles != def.privacyEncryptLocalFiles) { empty.privacyEncryptLocalFiles = privacyEncryptLocalFiles }
     if (privacyAskToApproveRelays != def.privacyAskToApproveRelays) { empty.privacyAskToApproveRelays = privacyAskToApproveRelays }
     if (privacyAcceptImages != def.privacyAcceptImages) { empty.privacyAcceptImages = privacyAcceptImages }
+    if (privacyAutoSaveReceivedMedia != def.privacyAutoSaveReceivedMedia) { empty.privacyAutoSaveReceivedMedia = privacyAutoSaveReceivedMedia }
     if (privacyLinkPreviews != def.privacyLinkPreviews) { empty.privacyLinkPreviews = privacyLinkPreviews }
     if (privacyChatListOpenLinks != def.privacyChatListOpenLinks) { empty.privacyChatListOpenLinks = privacyChatListOpenLinks }
     if (privacyShowChatPreviews != def.privacyShowChatPreviews) { empty.privacyShowChatPreviews = privacyShowChatPreviews }
@@ -7850,6 +7874,7 @@ data class AppSettings(
     privacyEncryptLocalFiles?.let { def.privacyEncryptLocalFiles.set(it) }
     privacyAskToApproveRelays?.let { def.privacyAskToApproveRelays.set(it) }
     privacyAcceptImages?.let { def.privacyAcceptImages.set(it) }
+    privacyAutoSaveReceivedMedia?.let { def.privacyAutoSaveReceivedMedia.set(it) }
     privacyLinkPreviews?.let { def.privacyLinkPreviews.set(it) }
     privacyChatListOpenLinks?.let { def.privacyChatListOpenLinks.set(it) }
     privacyShowChatPreviews?.let { def.privacyShowChatPreviews.set(it) }
@@ -7887,6 +7912,7 @@ data class AppSettings(
         privacyEncryptLocalFiles = true,
         privacyAskToApproveRelays = true,
         privacyAcceptImages = true,
+        privacyAutoSaveReceivedMedia = true,
         privacyLinkPreviews = true,
         privacyChatListOpenLinks = PrivacyChatListOpenLinksMode.ASK,
         privacyShowChatPreviews = true,
@@ -7925,6 +7951,7 @@ data class AppSettings(
           privacyEncryptLocalFiles = def.privacyEncryptLocalFiles.get(),
           privacyAskToApproveRelays = def.privacyAskToApproveRelays.get(),
           privacyAcceptImages = def.privacyAcceptImages.get(),
+          privacyAutoSaveReceivedMedia = def.privacyAutoSaveReceivedMedia.get(),
           privacyLinkPreviews = def.privacyLinkPreviews.get(),
           privacyChatListOpenLinks = def.privacyChatListOpenLinks.get(),
           privacyShowChatPreviews = def.privacyShowChatPreviews.get(),

@@ -53,6 +53,10 @@ actual fun openFile(fileSource: CryptoFile) {
   }
 }
 
+actual fun autoSaveReceivedMedia(_ciFile: CIFile, _msgContent: MsgContent) {
+  // Desktop does not auto-export to gallery.
+}
+
 fun filePathForShare(fileSource: CryptoFile): String? {
   return if (fileSource.cryptoArgs != null) {
     val tmpFile = File(tmpDir, fileSource.filePath)

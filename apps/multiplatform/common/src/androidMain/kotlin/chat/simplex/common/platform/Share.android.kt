@@ -5,6 +5,7 @@ import android.content.*
 import android.content.Intent.FLAG_ACTIVITY_NEW_TASK
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.provider.MediaStore
 import android.webkit.MimeTypeMap
 import androidx.compose.ui.graphics.ImageBitmap
@@ -26,6 +27,12 @@ data class OpenDefaultApp(
   val icon: ImageBitmap,
   val isSystemChooser: Boolean
 )
+
+actual fun UriHandler.sendEmail(subject: String, body: CharSequence) {
+  val subjectEncoded = Uri.encode(subject)
+  val bodyEncoded = Uri.encode(body.toString())
+  openUri("mailto:?subject=$subjectEncoded&body=$bodyEncoded")
+}
 
 actual fun ClipboardManager.shareText(text: String) {
   var text = text
@@ -117,15 +124,14 @@ actual fun openFile(fileSource: CryptoFile) {
   openOrShareFile("", fileSource, justOpen = true)
 }
 
-actual fun UriHandler.sendEmail(subject: String, body: CharSequence) {
-  val emailIntent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:"))
-  emailIntent.putExtra(Intent.EXTRA_SUBJECT, subject)
-  emailIntent.putExtra(Intent.EXTRA_TEXT, body)
-  emailIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-  try {
-    androidAppContext.startActivity(emailIntent)
-  } catch (e: ActivityNotFoundException) {
-    Log.e(TAG, "No activity was found for handling email intent")
+actual fun autoSaveReceivedMedia(ciFile: CIFile, msgContent: MsgContent) {
+  if (!canWriteExternalMedia()) {
+    return
+  }
+  when (msgContent) {
+    is MsgContent.MCImage -> saveImage(ciFile, showSavedToast = false)
+    is MsgContent.MCVideo -> saveVideo(ciFile, showSavedToast = false)
+    else -> {}
   }
 }
 
@@ -141,8 +147,28 @@ fun imageMimeType(fileName: String): String {
   }
 }
 
+private fun videoMimeType(fileName: String): String {
+  val lowercaseName = fileName.lowercase()
+  return when {
+    lowercaseName.endsWith(".mp4") -> "video/mp4"
+    lowercaseName.endsWith(".mov") -> "video/quicktime"
+    lowercaseName.endsWith(".mkv") -> "video/x-matroska"
+    lowercaseName.endsWith(".webm") -> "video/webm"
+    lowercaseName.endsWith(".avi") -> "video/x-msvideo"
+    else -> "video/mp4"
+  }
+}
+
+private fun canWriteExternalMedia(): Boolean {
+  return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+    true
+  } else {
+    androidAppContext.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+  }
+}
+
 /** Before calling, make sure the user allows to write to external storage [Manifest.permission.WRITE_EXTERNAL_STORAGE] */
-fun saveImage(ciFile: CIFile?) {
+fun saveImage(ciFile: CIFile?, showSavedToast: Boolean = true) {
   val filePath = getLoadedFilePath(ciFile)
   val fileName = ciFile?.fileName
   if (filePath != null && fileName != null) {
@@ -165,13 +191,51 @@ fun saveImage(ciFile: CIFile?) {
               return@createTmpFileAndDelete
             }
             tmpFile.inputStream().use { it.copyTo(outputStream) }
-            showToast(generalGetString(MR.strings.image_saved))
+            if (showSavedToast) showToast(generalGetString(MR.strings.image_saved))
           }
           outputStream.close()
         } else {
           File(filePath).inputStream().use { it.copyTo(outputStream) }
           outputStream.close()
-          showToast(generalGetString(MR.strings.image_saved))
+          if (showSavedToast) showToast(generalGetString(MR.strings.image_saved))
+        }
+      }
+    }
+  } else {
+    showToast(generalGetString(MR.strings.file_not_found))
+  }
+}
+
+fun saveVideo(ciFile: CIFile?, showSavedToast: Boolean = true) {
+  val filePath = getLoadedFilePath(ciFile)
+  val fileName = ciFile?.fileName
+  if (filePath != null && fileName != null) {
+    val values = ContentValues()
+    values.put(MediaStore.Video.Media.DATE_TAKEN, System.currentTimeMillis())
+    values.put(MediaStore.Video.Media.MIME_TYPE, videoMimeType(fileName))
+    values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+    values.put(MediaStore.MediaColumns.TITLE, fileName)
+    val uri = androidAppContext.contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values)
+    uri?.let {
+      androidAppContext.contentResolver.openOutputStream(uri)?.let { stream ->
+        val outputStream = BufferedOutputStream(stream)
+        if (ciFile.fileSource?.cryptoArgs != null) {
+          createTmpFileAndDelete { tmpFile ->
+            try {
+              decryptCryptoFile(filePath, ciFile.fileSource.cryptoArgs, tmpFile.absolutePath)
+            } catch (e: Exception) {
+              Log.e(TAG, "Unable to decrypt crypto file: " + e.stackTraceToString())
+              AlertManager.shared.showAlertMsg(title = generalGetString(MR.strings.error), text = e.stackTraceToString())
+              return@createTmpFileAndDelete
+            }
+            tmpFile.inputStream().use { it.copyTo(outputStream) }
+            if (showSavedToast) showToast(generalGetString(MR.strings.file_saved))
+          }
+          outputStream.close()
+        } else {
+          File(filePath).inputStream().use { it.copyTo(outputStream) }
+          outputStream.close()
+          if (showSavedToast) showToast(generalGetString(MR.strings.file_saved))
         }
       }
     }

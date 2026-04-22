@@ -98,6 +98,13 @@ fun PrivacySettingsView(
         withBGApi { chatModel.controller.apiSetEncryptLocalFiles(enable) }
       })
       SettingsPreferenceItem(painterResource(MR.images.ic_image), stringResource(MR.strings.auto_accept_images), chatModel.controller.appPrefs.privacyAcceptImages)
+      if (appPlatform.isAndroid) {
+        SettingsPreferenceItem(
+          painterResource(MR.images.ic_image),
+          stringResource(MR.strings.auto_save_received_media),
+          chatModel.controller.appPrefs.privacyAutoSaveReceivedMedia
+        )
+      }
       BlurRadiusOptions(remember { appPrefs.privacyMediaBlurRadius.state }) {
         appPrefs.privacyMediaBlurRadius.set(it)
       }
