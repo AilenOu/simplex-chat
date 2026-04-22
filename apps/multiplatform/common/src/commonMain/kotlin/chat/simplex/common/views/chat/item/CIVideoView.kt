@@ -56,6 +56,16 @@ fun CIVideoView(
       }
     }
     val f = filePath.value
+    LaunchedEffect(file?.fileId, file?.fileStatus, appPrefs.privacyAcceptImages.get(), f) {
+      val status = file?.fileStatus
+      if (file != null) {
+        val pref = appPrefs.privacyAcceptImages.get()
+        val canAutoReceive = pref && (status is CIFileStatus.RcvInvitation || status is CIFileStatus.RcvAborted) && f == null
+        if (canAutoReceive) {
+          receiveFileIfValidSize(file, receiveFile)
+        }
+      }
+    }
     if (file != null && f != null) {
       val view = LocalMultiplatformView()
       val openFullscreen = {

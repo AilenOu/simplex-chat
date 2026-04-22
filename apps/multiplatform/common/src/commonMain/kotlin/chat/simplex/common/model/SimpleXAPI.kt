@@ -1934,6 +1934,7 @@ object ChatController {
     val otherFileErrs = mutableListOf<API>()
 
     for (fileId in fileIds) {
+      Log.i(TAG, "[AutoRcv][Receive][Call] fileId=$fileId auto=$auto approvedRelays=$userApprovedRelays")
       val r = sendCmd(
         rhId, CC.ReceiveFile(
           fileId,
@@ -1943,13 +1944,16 @@ object ChatController {
         )
       )
       if (r is API.Result && r.res is CR.RcvFileAccepted) {
+        Log.i(TAG, "[AutoRcv][Receive][Accepted] fileId=$fileId")
         chatItemSimpleUpdate(rhId, user, r.res.chatItem)
       } else {
         val maybeChatError = apiChatErrorType(r)
         if (maybeChatError is ChatErrorType.FileNotApproved) {
+          Log.w(TAG, "[AutoRcv][Receive][NeedApprove] fileId=${maybeChatError.fileId} unknownServers=${maybeChatError.unknownServers.size}")
           fileIdsToApprove.add(maybeChatError.fileId)
           srvsToApprove.addAll(maybeChatError.unknownServers.map { serverHostname(it) })
         } else {
+          Log.w(TAG, "[AutoRcv][Receive][Failed] fileId=$fileId response=${r.responseType}")
           otherFileErrs.add(r)
         }
       }
@@ -2045,6 +2049,7 @@ object ChatController {
   }
 
   suspend fun receiveFile(rhId: Long?, user: UserLike, fileId: Long, userApprovedRelays: Boolean = false, auto: Boolean = false) {
+    Log.i(TAG, "[AutoRcv][Receive][Single] fileId=$fileId auto=$auto")
     receiveFiles(
       rhId = rhId,
       user = user,
@@ -2703,12 +2708,20 @@ object ChatController {
           }
           val file = cItem.file
           val mc = cItem.content.msgContent
+          if (file != null && (mc is MsgContent.MCVideo)) {
+            Log.i(
+              TAG,
+              "[AutoRcv][NewItem][Check] fileId=${file.fileId} chatId=${cInfo.id} size=${file.fileSize} protocol=${file.fileProtocol} status=${file.fileStatus::class.simpleName} pref=${appPrefs.privacyAcceptImages.get()}"
+            )
+          }
           if (file != null &&
             appPrefs.privacyAcceptImages.get() &&
             ((mc is MsgContent.MCImage && file.fileSize <= MAX_IMAGE_SIZE_AUTO_RCV)
-                || (mc is MsgContent.MCVideo && file.fileSize <= MAX_VIDEO_SIZE_AUTO_RCV)
-                || (mc is MsgContent.MCVoice && file.fileSize <= MAX_VOICE_SIZE_AUTO_RCV && file.fileStatus !is CIFileStatus.RcvAccepted))
+                || (mc is MsgContent.MCVideo && file.fileSize <= getMaxFileSize(file.fileProtocol))
+                || (mc is MsgContent.MCVoice && file.fileSize <= MAX_VOICE_SIZE_AUTO_RCV && file.fileStatus !is CIFileStatus.RcvAccepted)
+                || (mc is MsgContent.MCFile && file.fileSize <= getMaxFileSize(file.fileProtocol)))
           ) {
+            Log.i(TAG, "[AutoRcv][NewItem][Trigger] fileId=${file.fileId} auto=true")
             receiveFile(rhId, r.user, file.fileId, auto = true)
           }
           autoSaveReceivedMediaIfNeeded(rhId, r.user, cItem)

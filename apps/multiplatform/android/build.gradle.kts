@@ -120,8 +120,8 @@ android {
                 if (isRelease) {
                     include("arm64-v8a", "armeabi-v7a")
                 } else {
-                    // Include emulator ABIs in debug builds to avoid ARM translation issues on x86 emulators.
-                    include("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
+                    // Only include ABIs for which native libraries exist.
+                    include("arm64-v8a", "armeabi-v7a")
                     isUniversalApk = false
                 }
             }

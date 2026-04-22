@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.*
 import dev.icerock.moko.resources.compose.painterResource
 import dev.icerock.moko.resources.compose.stringResource
 import chat.simplex.common.model.*
+import chat.simplex.common.model.ChatController.appPrefs
 import chat.simplex.common.platform.*
 import chat.simplex.common.ui.theme.*
 import chat.simplex.common.views.helpers.*
@@ -35,6 +36,19 @@ fun CIFileView(
   smallView: Boolean = false,
   receiveFile: (Long) -> Unit
 ) {
+  val loadedFilePathForAutoReceive = remember(file, CIFile.cachedRemoteFileRequests.toList()) { getLoadedFilePath(file) }
+  LaunchedEffect(file?.fileId, file?.fileStatus, appPrefs.privacyAcceptImages.get(), loadedFilePathForAutoReceive) {
+    val status = file?.fileStatus
+    val canAutoReceive =
+      file != null &&
+        appPrefs.privacyAcceptImages.get() &&
+        (status is CIFileStatus.RcvInvitation || status is CIFileStatus.RcvAborted) &&
+        loadedFilePathForAutoReceive == null
+    if (canAutoReceive) {
+      receiveFileIfValidSize(file, receiveFile)
+    }
+  }
+
   val saveFileLauncher = rememberSaveFileLauncher(ciFile = file)
   val sizeMultiplier = 1f
   val progressSizeMultiplier = if (smallView) 0.7f else 1f
@@ -71,13 +85,7 @@ fun CIFileView(
     if (file != null) {
       when {
         file.fileStatus is CIFileStatus.RcvInvitation || file.fileStatus is CIFileStatus.RcvAborted -> {
-          //if (fileSizeValid(file)) {
-            receiveFile(file.fileId)
-          //} else {
-            //AlertManager.shared.showAlertMsg(
-              //generalGetString(MR.strings.large_file),
-              //String.format(generalGetString(MR.strings.contact_sent_large_file), formatBytes(getMaxFileSize(file.fileProtocol)))
-           // )
+          receiveFileIfValidSize(file, receiveFile)
         }
         file.fileStatus is CIFileStatus.RcvAccepted ->
           when (file.fileProtocol) {
@@ -224,6 +232,17 @@ fun CIFileView(
 }
 
 fun fileSizeValid(file: CIFile): Boolean = file.fileSize <= getMaxFileSize(file.fileProtocol)
+
+private fun receiveFileIfValidSize(file: CIFile, receiveFile: (Long) -> Unit) {
+  if (fileSizeValid(file)) {
+    receiveFile(file.fileId)
+  } else {
+    AlertManager.shared.showAlertMsg(
+      generalGetString(MR.strings.large_file),
+      String.format(generalGetString(MR.strings.contact_sent_large_file), formatBytes(getMaxFileSize(file.fileProtocol)))
+    )
+  }
+}
 
 fun showFileErrorAlert(err: FileError, temporary: Boolean = false) {
   val title: String = generalGetString(if (temporary) MR.strings.temporary_file_error else MR.strings.file_error)
